@@ -343,37 +343,31 @@ class PyTorchTrainer:
 def download_stock_data(ticker='JNJ', period='4y'):
     """Télécharge les données boursières depuis Yahoo Finance"""
     try:
-        # Téléchargement
-        data = yf.download(ticker, period=period, progress=False)
-        
-        if data.empty:
-            return None, None
+        with st.spinner('📊 Téléchargement des données JNJ...'):
+            data = yf.download(ticker, period=period, progress=False)
             
-        # SÉCURITÉ IMPORTANTE : Aplatir le MultiIndex si présent (Nouveau comportement yfinance)
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
+            if data.empty:
+                st.error("❌ Aucune donnée téléchargée")
+                return None, None
             
-        # SÉCURITÉ : S'assurer que l'index n'est pas dupliqué ou mal formaté
-        data = data.loc[~data.index.duplicated(keep='first')]
-        
-        # Métadonnées de l'entreprise
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        
-        company_info = {
-            'name': info.get('longName', 'Johnson & Johnson'),
-            'sector': info.get('sector', 'Healthcare'),
-            'industry': info.get('industry', 'Pharmaceuticals'),
-            'market_cap': info.get('marketCap', 0),
-            'pe_ratio': info.get('trailingPE', 0),
-            'dividend_yield': info.get('dividendYield', 0),
-            'volume': info.get('volume', 0),
-            'avg_volume': info.get('averageVolume', 0)
-        }
-        
-        return data, company_info
+            # Métadonnées de l'entreprise
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            company_info = {
+                'name': info.get('longName', 'Johnson & Johnson'),
+                'sector': info.get('sector', 'Healthcare'),
+                'industry': info.get('industry', 'Pharmaceuticals'),
+                'market_cap': info.get('marketCap', 0),
+                'pe_ratio': info.get('trailingPE', 0),
+                'dividend_yield': info.get('dividendYield', 0),
+                'volume': info.get('volume', 0),
+                'avg_volume': info.get('averageVolume', 0)
+            }
+            
+            return data, company_info
     except Exception as e:
-        st.error(f"Erreur technique lors du téléchargement: {str(e)}")
+        st.error(f"Erreur lors du téléchargement: {str(e)}")
         return None, None
 
 def prepare_data_pytorch(data, look_back=60, batch_size=32):
@@ -515,7 +509,7 @@ def plot_interactive_predictions(historical, lstm_pred, prophet_pred, dates):
         xaxis_title='Date',
         yaxis_title='Prix ($)',
         hovermode='x unified',
-        template='plotly_dark',
+        template='plotly_dark', # Template sombre activé
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         height=500,
@@ -546,9 +540,6 @@ def main():
         <span class="pytorch-badge">🔥 PyTorch</span>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Device info
-    device = 'CUDA' if torch.cuda.is_available() else 'CPU'
     
     # Sidebar
     with st.sidebar:
@@ -611,8 +602,12 @@ def main():
         )
         
         st.markdown("---")
+        
+        # Device info
+        device = 'CUDA' if torch.cuda.is_available() else 'CPU'
         st.info(f"💻 Device: {device}")
-        st.caption("© 2026 - Application PyTorch")
+        
+        st.caption("© 2024 - Application PyTorch")
 
     # Header principal
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -637,15 +632,12 @@ def main():
     # Étape 1: Téléchargement
     st.markdown("## 📥 Étape 1: Chargement des données")
     
-    # AJOUT DU SPINNER EXTÉRIEUR POUR LE FLUX STREAMLIT CLOUD
     if st.button("🚀 Télécharger les données JNJ", use_container_width=True):
-        with st.spinner('📊 Connexion à Yahoo Finance et récupération des données...'):
-            data, company_info = download_stock_data('JNJ')
+        data, company_info = download_stock_data('JNJ')
         
         if data is not None:
             st.session_state['data'] = data
             st.session_state['company_info'] = company_info
-            st.success("✅ Données chargées avec succès !")
             
             # Métriques
             col1, col2, col3, col4 = st.columns(4)
@@ -682,7 +674,7 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Graphique historique
+            # Graphique
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=data.index,
@@ -718,7 +710,9 @@ def main():
                         look_back,
                         batch_size
                     )
+                    
                     st.session_state['pytorch_data'] = pytorch_data
+                    
                     st.success(f"✅ Données préparées: {pytorch_data['X_train'].shape[0]} séquences")
                     
                     st.markdown(f"""
@@ -737,6 +731,7 @@ def main():
                 with st.spinner("Préparation des données NeuralProphet..."):
                     df_prophet = prepare_neuralprophet_data(st.session_state['data'])
                     st.session_state['prophet_data'] = df_prophet
+                    
                     st.success(f"✅ Données préparées: {len(df_prophet)} points")
                     
                     st.markdown(f"""
@@ -756,8 +751,9 @@ def main():
         
         with col1:
             if st.button("🎯 Entraîner LSTM (PyTorch)", use_container_width=True):
-                with st.spinner("Création et entraînement du modèle PyTorch..."):
-                    device_target = 'cuda' if torch.cuda.is_available() else 'cpu'
+                with st.spinner("Création du modèle PyTorch..."):
+                    # Initialisation
+                    device = 'cuda' if torch.cuda.is_available() else 'cpu'
                     model = LSTMPredictor(
                         input_size=1,
                         hidden_size=100,
@@ -765,7 +761,9 @@ def main():
                         dropout=0.2
                     )
                     
-                    trainer = PyTorchTrainer(model, device_target)
+                    trainer = PyTorchTrainer(model, device)
+                    
+                    # Entraînement
                     history = trainer.train(
                         st.session_state['pytorch_data']['train_loader'],
                         st.session_state['pytorch_data']['test_loader'],
@@ -777,9 +775,7 @@ def main():
                     st.session_state['lstm_model'] = model
                     st.session_state['trainer'] = trainer
                     
-                    st.success("✅ Modèle LSTM PyTorch entraîné !")
-                    
-                    # Graphique de perte
+                    # Graphique de perte style sombre
                     fig, ax = plt.subplots(figsize=(10, 5), facecolor=COLORS['background'])
                     ax.set_facecolor(COLORS['card_bg'])
                     ax.plot(history['train_loss'], label='Train', color=COLORS['primary'], linewidth=2)
@@ -795,12 +791,17 @@ def main():
                     # Évaluation
                     model.eval()
                     with torch.no_grad():
-                        X_test = st.session_state['pytorch_data']['X_test'].to(device_target)
+                        X_test = st.session_state['pytorch_data']['X_test'].to(device)
                         y_test = st.session_state['pytorch_data']['y_test'].cpu().numpy()
+                        
                         y_pred = model(X_test).cpu().numpy()
                         
-                        y_test_inv = st.session_state['pytorch_data']['scaler'].inverse_transform(y_test.reshape(-1, 1))
-                        y_pred_inv = st.session_state['pytorch_data']['scaler'].inverse_transform(y_pred.reshape(-1, 1))
+                        y_test_inv = st.session_state['pytorch_data']['scaler'].inverse_transform(
+                            y_test.reshape(-1, 1)
+                        )
+                        y_pred_inv = st.session_state['pytorch_data']['scaler'].inverse_transform(
+                            y_pred.reshape(-1, 1)
+                        )
                         
                         mse = mean_squared_error(y_test_inv, y_pred_inv)
                         mae = mean_absolute_error(y_test_inv, y_pred_inv)
@@ -810,8 +811,8 @@ def main():
                             <h4>📈 Performance LSTM PyTorch</h4>
                             <p>• MSE: {mse:.4f}</p>
                             <p>• MAE: {mae:.4f}</p>
-                            <p>• Epochs réelles: {len(history['train_loss'])}</p>
-                            <p>• Perte finale val: {history['val_loss'][-1]:.6f}</p>
+                            <p>• Epochs: {len(history['train_loss'])}</p>
+                            <p>• Final loss: {history['val_loss'][-1]:.6f}</p>
                         </div>
                         """, unsafe_allow_html=True)
         
@@ -819,13 +820,14 @@ def main():
             if st.button("🎯 Entraîner NeuralProphet", use_container_width=True):
                 model = train_neuralprophet(st.session_state['prophet_data'])
                 st.session_state['prophet_model'] = model
+                
                 st.success("✅ Modèle NeuralProphet entraîné!")
                 
                 st.markdown(f"""
                 <div class="gradient-card">
                     <h4>📈 NeuralProphet</h4>
                     <p>• Modèle entraîné avec succès</p>
-                    <p>• Prêt pour les prédictions futures</p>
+                    <p>• Prêt pour les prédictions</p>
                 </div>
                 """, unsafe_allow_html=True)
     
@@ -834,11 +836,13 @@ def main():
         st.markdown("## 🔮 Étape 4: Prédictions")
         
         if st.button("Générer les prédictions", use_container_width=True):
-            with st.spinner("Calcul des trajectoires futures..."):
-                device_target = 'cuda' if torch.cuda.is_available() else 'cpu'
+            with st.spinner("Calcul des prédictions..."):
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
                 
-                # Dernière séquence pour LSTM
-                last_sequence = st.session_state['pytorch_data']['scaled_data'][-st.session_state['pytorch_data']['look_back']:, 0]
+                # Dernière séquence
+                last_sequence = st.session_state['pytorch_data']['scaled_data'][
+                    -st.session_state['pytorch_data']['look_back']:, 0
+                ]
                 
                 # Prédictions LSTM
                 lstm_pred = predict_future_lstm_pytorch(
@@ -846,7 +850,7 @@ def main():
                     last_sequence,
                     st.session_state['pytorch_data']['scaler'],
                     prediction_days,
-                    device_target
+                    device
                 )
                 
                 # Prédictions NeuralProphet
@@ -857,11 +861,11 @@ def main():
                 forecast = st.session_state['prophet_model'].predict(future)
                 prophet_pred = forecast['yhat1'].values[-prediction_days:]
                 
-                # Alignement des dates futures
+                # Dates futures
                 last_date = st.session_state['data'].index[-1]
                 future_dates = [last_date + timedelta(days=i+1) for i in range(prediction_days)]
                 
-                # Tracé graphique interactif Plotly
+                # Graphique sombre
                 fig = plot_interactive_predictions(
                     st.session_state['data'],
                     lstm_pred,
@@ -870,15 +874,15 @@ def main():
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Section d'analyse finale
+                # Analyse
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     st.markdown(f"""
                     <div class="gradient-card">
-                        <h4>🔥 LSTM PyTorch ({prediction_days}j)</h4>
-                        <p>Premier jour: ${lstm_pred[0]:.2f}</p>
-                        <p>Dernier jour: ${lstm_pred[-1]:.2f}</p>
+                        <h4>🔥 LSTM PyTorch</h4>
+                        <p>Premier: ${lstm_pred[0]:.2f}</p>
+                        <p>Dernier: ${lstm_pred[-1]:.2f}</p>
                         <p>Variation: {((lstm_pred[-1]-lstm_pred[0])/lstm_pred[0]*100):.2f}%</p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -886,22 +890,50 @@ def main():
                 with col2:
                     st.markdown(f"""
                     <div class="gradient-card">
-                        <h4>📊 NeuralProphet ({prediction_days}j)</h4>
-                        <p>Premier jour: ${prophet_pred[0]:.2f}</p>
-                        <p>Dernier jour: ${prophet_pred[-1]:.2f}</p>
+                        <h4>📊 NeuralProphet</h4>
+                        <p>Premier: ${prophet_pred[0]:.2f}</p>
+                        <p>Dernier: ${prophet_pred[-1]:.2f}</p>
                         <p>Variation: {((prophet_pred[-1]-prophet_pred[0])/prophet_pred[0]*100):.2f}%</p>
                     </div>
                     """, unsafe_allow_html=True)
-                    
+                
                 with col3:
-                    avg_final = (lstm_pred[-1] + prophet_pred[-1]) / 2
+                    avg_first = (lstm_pred[0] + prophet_pred[0]) / 2
+                    avg_last = (lstm_pred[-1] + prophet_pred[-1]) / 2
+                    
                     st.markdown(f"""
-                    <div class="gradient-card" style="border-left-color: #10B981;">
-                        <h4>🏁 Consensus Mixte</h4>
-                        <p>Prix cible moyen: ${avg_final:.2f}</p>
-                        <p>Statut du signal: <b>Analyse Prête</b></p>
+                    <div class="gradient-card">
+                        <h4>🎯 Consensus</h4>
+                        <p>Moyenne J1: ${avg_first:.2f}</p>
+                        <p>Moyenne J{prediction_days}: ${avg_last:.2f}</p>
+                        <p>Tendance: {"📈 HAUSSE" if avg_last > avg_first else "📉 BAISSE"}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                
+                # Tableau style sombre automatique par Streamlit
+                st.markdown("### 📅 Détail des prédictions")
+                
+                df_predictions = pd.DataFrame({
+                    'Date': [d.strftime('%Y-%m-%d') for d in future_dates],
+                    'LSTM (PyTorch)': [f"${x:.2f}" for x in lstm_pred],
+                    'NeuralProphet': [f"${x:.2f}" for x in prophet_pred],
+                    'Moyenne': [f"${(lstm_pred[i] + prophet_pred[i])/2:.2f}" for i in range(prediction_days)]
+                })
+                
+                st.dataframe(
+                    df_predictions,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Export
+                csv = df_predictions.to_csv(index=False)
+                st.download_button(
+                    label="📥 Télécharger les prédictions (CSV)",
+                    data=csv,
+                    file_name=f"jnj_predictions_pytorch_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
 
 if __name__ == '__main__':
     main()
